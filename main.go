@@ -1,22 +1,54 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 )
 
 func main() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		log.Fatal("Couldn't determine current working directory:", err)
+
+	hidden := flag.Bool("a", false, "Include hidden Files - Default is False")
+	flag.Parse()
+
+	inputDir := flag.Arg(0)
+	var err error
+
+	if inputDir == "" || inputDir == "." {
+		inputDir, err = os.Getwd()
+		if err != nil {
+			log.Fatal("Couldn't determine current working directory:", err)
+		}
 	}
 
-	entries, err := os.ReadDir(pwd)
+	if !pathExists(inputDir) {
+		log.Fatal(fmt.Sprintf("Directory %s doesn't exists\n", inputDir))
+	}
+
+	output, err := goLs(inputDir, *hidden)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error running go-ls!\n")
+	}
+
+	fmt.Printf("%s\n", output)
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return err == nil
+}
+
+func goLs(dir string, hidden bool) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
 	}
 
 	totalEntries := len(entries)
@@ -25,7 +57,13 @@ func main() {
 	directories := make([]fs.DirEntry, 0, totalEntries)
 	special := make([]fs.DirEntry, 0, 0)
 
+	hiddenRegex := regexp.MustCompile(`^\.`)
+
 	for _, entry := range entries {
+		if !hidden && hiddenRegex.MatchString(entry.Name()) {
+			continue
+		}
+
 		switch mode := entry.Type(); {
 		case mode.IsRegular():
 			files = append(files, entry)
@@ -39,25 +77,25 @@ func main() {
 	var output strings.Builder
 
 	if len(directories) > 0 {
-		output.WriteString("Directories:\n---\n")
+		output.WriteString("Directories:\n------------\n")
 		for i, dir := range directories {
-			output.WriteString(fmt.Sprintf("%d - %v\n", i+1, dir.Name()))
+			output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, dir.Name()))
 		}
 	}
-
+	
 	if len(files) > 0 {
-		output.WriteString("\nFiles:\n---\n")
+		output.WriteString("\nFiles:\n------\n")
 		for i, file := range files {
-			output.WriteString(fmt.Sprintf("%d - %v\n", i+1, file.Name()))
+			output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, file.Name()))
 		}
 	}
 
 	if len(special) > 0 {
-		output.WriteString("\nSpecial Files:\n---\n")
+		output.WriteString("\nSpecial Files:\n--------------\n")
 		for i, sp := range special {
-			output.WriteString(fmt.Sprintf("%d - %v\n", i+1, sp.Name()))
+			output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, sp.Name()))
 		}
 	}
 
-	fmt.Printf("%s\n", output.String())
+	return output.String(), nil
 }
