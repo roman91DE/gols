@@ -6,13 +6,16 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/user"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 func main() {
 
 	hidden := flag.Bool("a", false, "Include hidden Files - Default is False")
+	longListing := flag.Bool("l", false, "Long listing format - Default is False")
 	flag.Parse()
 
 	inputDir := flag.Arg(0)
@@ -29,7 +32,7 @@ func main() {
 		log.Fatal(fmt.Sprintf("Directory %s doesn't exists\n", inputDir))
 	}
 
-	output, err := goLs(inputDir, *hidden)
+	output, err := goLs(inputDir, *hidden, *longListing)
 	if err != nil {
 		log.Fatal("Error running go-ls!\n")
 	}
@@ -45,7 +48,7 @@ func pathExists(path string) bool {
 	return err == nil
 }
 
-func goLs(dir string, hidden bool) (string, error) {
+func goLs(dir string, hidden bool, longListing bool) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", err
@@ -79,21 +82,43 @@ func goLs(dir string, hidden bool) (string, error) {
 	if len(directories) > 0 {
 		output.WriteString("Directories:\n------------\n")
 		for i, dir := range directories {
-			output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, dir.Name()))
+			if longListing {
+				info, _ := dir.Info()
+				stat := info.Sys().(*syscall.Stat_t)
+				owner, _ := user.LookupId(fmt.Sprint(stat.Uid))
+				output.WriteString(fmt.Sprintf("%3d - %v (Owner: %s, Permissions: %o)\n", i+1, dir.Name(), owner.Username, info.Mode().Perm()))
+			} else {
+				output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, dir.Name()))
+			}
 		}
 	}
 	
 	if len(files) > 0 {
 		output.WriteString("\nFiles:\n------\n")
 		for i, file := range files {
-			output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, file.Name()))
+			if longListing {
+				info, _ := file.Info()
+				stat := info.Sys().(*syscall.Stat_t)
+				sizeMB := float64(info.Size()) / (1024 * 1024)
+				owner, _ := user.LookupId(fmt.Sprint(stat.Uid))
+				output.WriteString(fmt.Sprintf("%3d - %v (Size: %.2f MB, Owner: %s, Permissions: %o)\n", i+1, file.Name(), sizeMB, owner.Username, info.Mode().Perm()))
+			} else {
+				output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, file.Name()))
+			}
 		}
 	}
 
 	if len(special) > 0 {
 		output.WriteString("\nSpecial Files:\n--------------\n")
 		for i, sp := range special {
-			output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, sp.Name()))
+			if longListing {
+				info, _ := sp.Info()
+				stat := info.Sys().(*syscall.Stat_t)
+				owner, _ := user.LookupId(fmt.Sprint(stat.Uid))
+				output.WriteString(fmt.Sprintf("%3d - %v (Owner: %s, Permissions: %o)\n", i+1, sp.Name(), owner.Username, info.Mode().Perm()))
+			} else {
+				output.WriteString(fmt.Sprintf("%3d - %v\n", i+1, sp.Name()))
+			}
 		}
 	}
 
